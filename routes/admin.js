@@ -147,6 +147,51 @@ router.get('/requirements', async (req, res) => {
   }
 });
 
+// DELETE /api/admin/requirements/:id
+// Admin-only: delete a requirement document
+router.delete('/requirements/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const r = await Requirement.findById(id);
+    if (!r) return res.status(404).json({ msg: 'Requirement not found' });
+
+    // OPTIONAL: if you want to remove images from Cloudinary, you can do it here.
+    // This requires you to have a helper that can delete by public id or URL.
+    // Example (uncomment and adapt if you have a delete function):
+    //
+    // const { deleteByPublicId } = require('../cloudinary'); // <-- implement this if needed
+    // if (Array.isArray(r.images) && r.images.length) {
+    //   for (const imgUrl of r.images) {
+    //     try {
+    //       // derive public id from URL or store public_id in DB when uploading
+    //       const publicId = extractPublicIdFromUrl(imgUrl); // implement extractor if needed
+    //       if (publicId) await deleteByPublicId(publicId);
+    //     } catch (err) {
+    //       console.warn('Failed to delete cloudinary image', imgUrl, err);
+    //     }
+    //   }
+    // }
+
+    await Requirement.deleteOne({ _id: id });
+
+    // Notify via sockets
+    const io = req.app.get('io');
+    if (io) {
+      // notify the specific user room that their requirement was deleted
+      if (r.user) io.to(`user:${String(r.user)}`).emit('requirement_deleted', { id, requirement: r });
+
+      // also notify admins so admin UIs can refresh
+      io.to('admins').emit('requirement_deleted', { id, requirement: r });
+    }
+
+    return res.json({ success: true, id });
+  } catch (err) {
+    console.error('admin delete requirement error', err);
+    return res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+
 async function handleReply(req, res) {
   try {
     const id = req.params.id;
